@@ -67,10 +67,10 @@ stages:
                 PathtoPublish: '$(build.artifactstagingdirectory)'
               #condition: succeededOrFailed()
 
-  - stage: DEV
+  - stage: Test
     dependsOn: Build
     condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
-    displayName: 'DEV Deployment'
+    displayName: 'Test Deployment'
     jobs:
      - job: 'Creating_Infra'
        steps:
