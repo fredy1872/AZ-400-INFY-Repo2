@@ -1,6 +1,9 @@
 trigger:
 - main
 
+pool:
+  vmImage: ubuntu latest
+
 extends: 
   template: template.yaml
   parameters:
@@ -18,31 +21,37 @@ extends:
               command: restore
               projects: '**/*.csproj'
 
-
-          - task: AdvancedSecurity-Codeql-Init@1
+          - task: ms.advancedsecurity-tasks.codeql.init.AdvancedSecurity-Codeql-Init@1
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Initialize CodeQL'
             inputs:
-              languages: 'csharp'
+              languages: csharp
+              querysuite: default
 
           - task: DotNetCoreCLI@2
             displayName: Build
             inputs:
-              projects: Everything.sln
+              projects: '**/*.csproj'
               arguments: '--configuration $(BuildConfiguration)'
 
-          - task: AdvancedSecurity-Dependency-Scanning@1
-
-          - task: AdvancedSecurity-Codeql-Analyze@1
-            inputs:
-              querysuite: 'default'
-                    
-          - task: AdvancedSecurity-Publish@1
-          - task: DotNetCoreCLI@2
+          - task: ms.advancedsecurity-tasks.dependency-scanning.AdvancedSecurity-Dependency-Scanning@1
             condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Dependency Scanning'
+
+          - task: ms.advancedsecurity-tasks.codeql.analyze.AdvancedSecurity-Codeql-Analyze@1
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Perform CodeQL analysis'
+
+          - task: ms.advancedsecurity-tasks.codeql.enhance.AdvancedSecurity-Publish@1
+            condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+            displayName: 'Publish Results'
+
+          - task: DotNetCoreCLI@2
             displayName: Test
             inputs:
               command: test
-              projects: '**/*[Tt]ests/*.csproj'
-              arguments: '--configuration $(BuildConfiguration)'
+              projects: '[Tt]ests/**/*.csproj'
+              arguments: '--configuration $(BuildConfiguration) --collect:"Code coverage"'
 
           - task: DotNetCoreCLI@2
             displayName: Publish
@@ -51,18 +60,15 @@ extends:
               publishWebProjects: True
               arguments: '--configuration $(BuildConfiguration) --output $(build.artifactstagingdirectory)'
               zipAfterPublish: True
-          
-          - task: CopyFiles@2
-            displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifact'
             inputs:
-              SourceFolder: DBscripts/
-              Contents: |
-                CatalogDB.sql
-                IdentityDB.sql
-              TargetFolder: '$(build.artifactstagingdirectory)'
+              PathtoPublish: '$(build.artifactstagingdirectory)'
+            condition: succeededOrFailed()
           
           - task: CopyFiles@2
-            displayName: 'Copy Files to: $(build.artifactstagingdirectory)'
+            displayName: 'Copy ARM template files'
             inputs:
               SourceFolder: env/eshopenv/
               Contents: |
@@ -76,11 +82,11 @@ extends:
               PathtoPublish: '$(build.artifactstagingdirectory)'
             #condition: succeededOrFailed()
          
-          
+
 
       - stage: Test
-        dependsOn: Build
         condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+        dependsOn: Build
         displayName: 'Test Deployment'
         jobs:
         - job: 'Creating_Infra'
